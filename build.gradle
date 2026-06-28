@@ -2,7 +2,15 @@ apply plugin: "java"
 
 version = '1.0'
 
-sourceSets.main.java.srcDirs = ["src"]
+sourceSets{
+    main{
+        java{
+            srcDirs = ["src"]
+            exclude "test/**"
+        }
+    }
+    test.java.srcDirs = ["src/test/java"]
+}
 
 repositories{
     mavenCentral()
@@ -47,6 +55,14 @@ ext{
 
 dependencies{
     compileOnly mindustryVersion == "be" ? "Anuken:MindustryBuilds:latest" : "Anuken:Mindustry:$mindustryVersion"
+}
+
+tasks.register('behaviorTest', JavaExec){
+    group = 'verification'
+    description = 'Runs SchemPack behavior route checks without launching Mindustry.'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'schempack.BehaviorTestRunner'
 }
 
 tasks.register('jarAndroid'){
