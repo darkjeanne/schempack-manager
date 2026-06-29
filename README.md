@@ -59,11 +59,11 @@ Automatic release options:
 1. Push a version tag:
 
 ```sh
-git tag v1.0.0
-git push origin v1.0.0
+git tag release_1.0
+git push origin release_1.0
 ```
 
-2. Or run the `Release` workflow manually from GitHub Actions and enter a tag like `v1.0.0`.
+2. Or run the `Release` workflow manually from GitHub Actions and enter a tag like `release_1.0` or `v1.0.0`.
 
 The workflow builds `build/libs/schempack-manager.jar`, creates the GitHub Release, and uploads the jar.
 
