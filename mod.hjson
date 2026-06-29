@@ -4,5 +4,5 @@ author: "darkjeanne"
 main: "schempack.SchemPackManager"
 description: "Sync Mindustry schematics with GitHub, with auto push, pull/merge, and local-only filtering."
 version: "1.0.0"
-minGameVersion: 158
+minGameVersion: 154
 java: true
