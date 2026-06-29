@@ -50,22 +50,44 @@ jobs:
       - name: Build release jar
         run: |
           ./gradlew deploy
+          find build/libs -maxdepth 1 -type f -name "*.jar" -print -exec ls -lh {} \;
+
+      - name: Locate release jar
+        id: release-jar
+        run: |
+          jar_path="build/libs/schempack-manager.jar"
+          if [ ! -f "$jar_path" ]; then
+            jar_path="$(find build/libs -maxdepth 1 -type f -name "*.jar" ! -name "*Desktop.jar" | head -n 1)"
+          fi
+          if [ -z "$jar_path" ] || [ ! -f "$jar_path" ]; then
+            echo "Release jar was not created."
+            find . -maxdepth 3 -type f | sort
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$jar_path" "dist/schempack-manager.jar"
+          echo "path=$jar_path" >> "$GITHUB_OUTPUT"
+          echo "asset=dist/schempack-manager.jar" >> "$GITHUB_OUTPUT"
+          ls -lh "dist/schempack-manager.jar"
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release-tag.outputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            gh release create "$TAG" \
-              "build/libs/${{ github.event.repository.name }}.jar" \
-              --title "$TAG" \
-              --generate-notes \
-              --target "$GITHUB_SHA"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists."
           else
-            gh release create "$TAG" \
-              "build/libs/${{ github.event.repository.name }}.jar" \
-              --title "$TAG" \
-              --generate-notes \
-              --verify-tag
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              gh release create "$TAG" \
+                --title "$TAG" \
+                --generate-notes \
+                --target "$GITHUB_SHA"
+            else
+              gh release create "$TAG" \
+                --title "$TAG" \
+                --generate-notes \
+                --verify-tag
+            fi
           fi
+          gh release upload "$TAG" "${{ steps.release-jar.outputs.asset }}" --clobber
