@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PATH
+        run: |
+          echo "${ANDROID_HOME}/build-tools/34.0.0" >> "$GITHUB_PATH"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Select release tag
+        id: release-tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run behavior tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew behaviorTest
+
+      - name: Build release jar
+        run: |
+          ./gradlew deploy
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release-tag.outputs.tag }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            gh release create "$TAG" \
+              "build/libs/${{ github.event.repository.name }}.jar" \
+              --title "$TAG" \
+              --generate-notes \
+              --target "$GITHUB_SHA"
+          else
+            gh release create "$TAG" \
+              "build/libs/${{ github.event.repository.name }}.jar" \
+              --title "$TAG" \
+              --generate-notes \
+              --verify-tag
+          fi

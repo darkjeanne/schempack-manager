@@ -50,6 +50,23 @@ Classic token:
 
 `Force Push Local` overwrites the GitHub repo with the local schematic folder. Use it only when the local schempack is the version you want to keep.
 
+## Releasing
+
+The in-game mod browser needs a GitHub Release with the built jar attached. GitHub automatically adds the source code `.zip` and `.tar.gz` archives to every release.
+
+Automatic release options:
+
+1. Push a version tag:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+2. Or run the `Release` workflow manually from GitHub Actions and enter a tag like `v1.0.0`.
+
+The workflow builds `build/libs/schempack-manager.jar`, creates the GitHub Release, and uploads the jar.
+
 ## Building for Desktop Testing
 
 1. Install JDK **17**.
