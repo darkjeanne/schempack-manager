@@ -5,9 +5,14 @@ import arc.Events;
 import arc.files.Fi;
 import arc.graphics.Color;
 import arc.scene.ui.Button;
+import arc.scene.ui.ImageButton;
 import arc.scene.ui.Label;
+import arc.scene.ui.ImageButton.ImageButtonStyle;
+import arc.math.geom.Rect;
+import arc.math.geom.Vec2;
 import arc.util.Log;
 import arc.util.Scaling;
+import arc.util.Tmp;
 import mindustry.Vars;
 import mindustry.game.EventType;
 import mindustry.game.Schematic;
@@ -71,7 +76,7 @@ public class SchemPackManager extends Mod {
 
     private void installAutoPushChangeMonitor() {
         Events.run(EventType.Trigger.update, () -> {
-            if (config == null || syncController == null || !config.isAutoSyncEnabled()) {
+            if (config == null || syncController == null) {
                 lastSchematicSnapshot = Long.MIN_VALUE;
                 autoPushCheckTimer = 0f;
                 return;
@@ -89,7 +94,11 @@ public class SchemPackManager extends Mod {
             }
             if (snapshot != lastSchematicSnapshot) {
                 lastSchematicSnapshot = snapshot;
-                syncController.requestImmediateAutoSync();
+                if (config.isAutoSyncEnabled()) {
+                    syncController.requestImmediateAutoSync();
+                } else {
+                    syncController.requestCompare();
+                }
             }
         });
     }
@@ -238,6 +247,7 @@ public class SchemPackManager extends Mod {
 
         Set<String> stagedFiltered = currentFilteredNames();
         Set<String> selectedTags = new LinkedHashSet<>();
+        List<FilterEntry> allEntries = collectSchematicFilterEntries("", Collections.emptySet(), stagedFiltered);
 
         Table tagTable = new Table();
         filterDialog.cont.table(tags -> {
@@ -246,7 +256,19 @@ public class SchemPackManager extends Mod {
             tags.pane(Styles.noBarPane, tagTable).growX().height(46f).scrollY(false);
         }).growX().height(50f).row();
 
-        Table listTable = new Table();
+        Table listTable = new Table() {
+            @Override
+            public void setCullingArea(Rect cullingArea) {
+                super.setCullingArea(cullingArea);
+                getChildren().<Table>each(child -> child instanceof Table, child -> {
+                    if (getCullingArea() == null || child.getCullingArea() == null) return;
+                    Vec2 position = getCullingArea().getPosition(Tmp.v1);
+                    child.getCullingArea().setSize(getCullingArea().width, getCullingArea().height)
+                            .setPosition(child.parentToLocalCoordinates(position));
+                });
+            }
+        };
+        listTable.setCullingArea(new Rect());
         ScrollPane scrollPane = new ScrollPane(listTable);
         scrollPane.setOverscroll(false, true);
         filterDialog.cont.add(scrollPane).grow().height(420f).row();
@@ -254,7 +276,7 @@ public class SchemPackManager extends Mod {
         Runnable[] rebuild = new Runnable[1];
         rebuild[0] = () -> {
             rebuildFilterTags(tagTable, selectedTags, rebuild[0]);
-            rebuildFilterOverlay(listTable, searchField.getText(), selectedTags, stagedFiltered);
+            rebuildFilterOverlay(listTable, allEntries, searchField.getText(), selectedTags, stagedFiltered);
         };
         searchField.changed(() -> rebuild[0].run());
         rebuild[0].run();
@@ -272,6 +294,7 @@ public class SchemPackManager extends Mod {
     private void rebuildFilterTags(Table tagTable, Set<String> selectedTags, Runnable rebuild) {
         tagTable.clearChildren();
         tagTable.left();
+        tagTable.defaults().pad(2f).height(42f);
         for (String tag : collectFilterTags()) {
             tagTable.button(tag, Styles.togglet, () -> {
                 if (selectedTags.contains(tag)) {
@@ -280,15 +303,15 @@ public class SchemPackManager extends Mod {
                     selectedTags.add(tag);
                 }
                 rebuild.run();
-            }).checked(selectedTags.contains(tag)).height(42f).pad(2f);
+            }).checked(selectedTags.contains(tag)).with(button -> button.getLabel().setWrap(false));
         }
     }
 
-    private void rebuildFilterOverlay(Table listTable, String searchText, Set<String> selectedTags, Set<String> stagedFiltered) {
+    private void rebuildFilterOverlay(Table listTable, List<FilterEntry> allEntries, String searchText, Set<String> selectedTags, Set<String> stagedFiltered) {
         listTable.clearChildren();
         listTable.top();
 
-        List<FilterEntry> entries = collectSchematicFilterEntries(searchText, selectedTags, stagedFiltered);
+        List<FilterEntry> entries = filterEntries(allEntries, searchText, selectedTags, stagedFiltered);
         if (entries.isEmpty()) {
             listTable.add("No schematics found").color(Color.lightGray).row();
             return;
@@ -300,16 +323,14 @@ public class SchemPackManager extends Mod {
             Button card = listTable.button(cell -> {
                 cell.top();
                 cell.margin(0f);
+                Runnable[] toggle = new Runnable[1];
                 cell.table(buttons -> {
                     buttons.left();
-                    buttons.defaults().size(50f);
-                    buttons.button(entry.filtered ? Icon.eyeOffSmall : Icon.eyeSmall, Styles.emptyi, () -> {
-                        if (stagedFiltered.contains(entry.fileName)) {
-                            stagedFiltered.remove(entry.fileName);
-                        } else {
-                            stagedFiltered.add(entry.fileName);
-                        }
-                    }).tooltip("Toggle GitHub sync");
+                    buttons.defaults().height(50f).pad(2f);
+                    ImageButtonStyle style = new ImageButtonStyle(Styles.emptyi);
+                    ImageButton eye = buttons.button(Icon.eyeSmall, style, () -> toggle[0].run()).size(50f).tooltip("Toggle GitHub sync").get();
+                    eye.update(() -> eye.getStyle().imageUp = stagedFiltered.contains(entry.fileName) ? Icon.eyeOffSmall : Icon.eyeSmall);
+                    buttons.label(() -> stagedFiltered.contains(entry.fileName) ? "Filtered" : "Included").color(Color.lightGray).left().growX();
                 }).growX().height(50f);
                 cell.row();
                 cell.stack(new SchematicImage(entry.schematic).setScaling(Scaling.fit), new Table(name -> {
@@ -318,17 +339,10 @@ public class SchemPackManager extends Mod {
                         Label label = c.add(entry.schematic.name()).style(Styles.outlineLabel).color(Color.white).top().growX().maxWidth(192f).get();
                         label.setEllipsis(true);
                     }).growX().margin(1f).pad(4f).maxWidth(192f).padBottom(0f);
-                    name.bottom();
-                    name.table(Styles.black3, c -> {
-                        c.label(() -> stagedFiltered.contains(entry.fileName) ? "Filtered" : "Included").style(Styles.outlineLabel).color(Color.lightGray);
-                    }).growX().margin(1f).pad(4f).maxWidth(192f);
                 })).size(200f);
+                toggle[0] = () -> toggleFilter(entry.fileName, stagedFiltered);
             }, () -> {
-                if (stagedFiltered.contains(entry.fileName)) {
-                    stagedFiltered.remove(entry.fileName);
-                } else {
-                    stagedFiltered.add(entry.fileName);
-                }
+                toggleFilter(entry.fileName, stagedFiltered);
             }).pad(4f).style(Styles.flati).get();
             card.getStyle().up = Tex.pane;
 
@@ -336,6 +350,35 @@ public class SchemPackManager extends Mod {
                 listTable.row();
             }
         }
+    }
+
+    private void toggleFilter(String fileName, Set<String> stagedFiltered) {
+        if (stagedFiltered.contains(fileName)) {
+            stagedFiltered.remove(fileName);
+        } else {
+            stagedFiltered.add(fileName);
+        }
+    }
+
+    private List<FilterEntry> filterEntries(List<FilterEntry> entries, String searchText, Set<String> selectedTags, Set<String> stagedFiltered) {
+        String needle = normalizedSearch(searchText);
+        List<FilterEntry> filteredEntries = new ArrayList<>();
+        for (FilterEntry entry : entries) {
+            if (!selectedTags.isEmpty() && !hasAllLabels(entry.schematic, selectedTags)) continue;
+            if (!needle.isEmpty()
+                    && !normalizedSearch(entry.fileName).contains(needle)
+                    && !normalizedSearch(entry.schematic.name()).contains(needle)
+                    && !normalizedSearch(entry.schematic.description()).contains(needle)
+                    && !normalizedSearch(entry.relativePath).contains(needle)) continue;
+            filteredEntries.add(entry.withFiltered(stagedFiltered.contains(entry.fileName)));
+        }
+        filteredEntries.sort((left, right) -> {
+            if (left.filtered != right.filtered) {
+                return left.filtered ? -1 : 1;
+            }
+            return left.schematic.name().compareToIgnoreCase(right.schematic.name());
+        });
+        return filteredEntries;
     }
 
     private List<FilterEntry> collectSchematicFilterEntries(String searchText, Set<String> selectedTags, Set<String> stagedFiltered) {
@@ -455,6 +498,11 @@ public class SchemPackManager extends Mod {
             this.fileName = fileName;
             this.relativePath = relativePath;
             this.filtered = filtered;
+        }
+
+        private FilterEntry withFiltered(boolean filtered) {
+            if (this.filtered == filtered) return this;
+            return new FilterEntry(schematic, file, fileName, relativePath, filtered);
         }
     }
 

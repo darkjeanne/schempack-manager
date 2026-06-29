@@ -1,4 +1,4 @@
-name: Build Mod
+name: Build
 
 on: [push, pull_request]
 
@@ -16,13 +16,15 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-    - name: Build mod jar
+    - name: Run behavior tests
       run: |
         chmod +x ./gradlew
+        ./gradlew behaviorTest
+    - name: Build mod jar
+      run: |
         ./gradlew deploy
     - name: Upload built jar file
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@v4
       with:
-        archive: false
         name: ${{ github.event.repository.name }}
         path: build/libs/${{ github.event.repository.name }}.jar
