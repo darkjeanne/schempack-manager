@@ -1,4 +1,4 @@
-name: "schempack-manager"
+﻿name: "schempack-manager"
 displayName: "SchemPack Manager"
 author: "darkjeanne"
 main: "schempack.SchemPackManager"
@@ -6,3 +6,4 @@ description: "Sync Mindustry schematics with GitHub, with auto push, pull/merge,
 version: "1.0.0"
 minGameVersion: 154
 java: true
+hidden: true
