@@ -70,6 +70,14 @@ jobs:
           echo "asset=dist/schempack-manager.jar" >> "$GITHUB_OUTPUT"
           ls -lh "dist/schempack-manager.jar"
 
+      - name: Verify release jar metadata
+        run: |
+          jar tf dist/schempack-manager.jar | grep -x "mod.hjson"
+          jar xf dist/schempack-manager.jar mod.hjson
+          cat mod.hjson
+          grep -q 'name: "schempack-manager"' mod.hjson
+          grep -q 'main: "schempack.SchemPackManager"' mod.hjson
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
